@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+*.egg-info/
+.ipynb_checkpoints/
+
+# pipeline outputs
+*.h5
+*.npz
+*.npy
+pipeline.log
+
+# convenience symlinks to wherever datasets/cache actually live — see README
+# (no trailing slash: a trailing-slash pattern only matches real directories,
+# not symlinks-to-directories)
+/data
+/output

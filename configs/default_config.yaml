@@ -1,0 +1,164 @@
+# TSVP (Temporal-Spatial Video Processor) default pipeline config.
+#
+# This file holds every field that's typically the same across scenes shot with
+# the same capture rig — camera/NPZ layout, normalization constants, and the
+# wavelet/denoising algorithm settings. A per-scene config only needs to set
+# `extends: default_config.yaml` plus the handful of fields that actually vary
+# per scene (scene_name, input.file_path, output.file_path — see
+# `scene_example.yaml`). See `src/config.py` for exactly how the merge works:
+# nested dicts merge key-by-key, everything else (scalars, lists, smoother
+# chains) is replaced wholesale by whatever the scene config sets.
+#
+# Sections below are listed in the order the pipeline runs them:
+#   input -> pre_transform -> temporal_transform -> spatial_processing -> output
+
+# ---------------------------------------------------------------------------
+# input — where the raw capture comes from and how much of it to use.
+# ---------------------------------------------------------------------------
+input:
+  # file_path is intentionally omitted here — every scene points at a different
+  # capture, so this is the field a scene config is expected to override.
+  data_format: 'boson_raw'   # Only 'boson_raw' is currently supported: a raw FLIR Boson capture
+                              # with a 2-row telemetry header at the top of each frame. The frame's
+                              # hardware frame counter is parsed from that header (used below by
+                              # uniform_resample) — there is no way to supply frame numbers separately.
+  video_key: 'raw_thr_frames_A'      # NPZ key holding the raw (T, H, W) frame stack (telemetry rows
+                                    # included). A trailing singleton channel axis, (T, H, W, 1), is
+                                    # also supported and squeezed off automatically.
+  tstamps_key: 'raw_thr_tstamps_A'   # NPZ key holding per-frame software timestamps, shape (T,).
+
+  start_idx: 0       # First frame to keep (after telemetry parsing), inclusive.
+  end_idx: -1        # Last frame to keep, exclusive. -1 means "through the end of the video".
+  crop_bbox: null     # Spatial crop [x_min, y_min, x_max, y_max] in pixels, or null for no crop.
+
+  uniform_resample: True    # Frame numbers occasionally skip (dropped frames). If True, missing
+                             # frames are filled in by linearly interpolating between their neighbors so
+                             # the output video has one frame per hardware frame-number tick.
+
+# ---------------------------------------------------------------------------
+# pre_transform — runs on the raw (H, W, T) video before the wavelet transform.
+# ---------------------------------------------------------------------------
+pre_transform:
+  # If True (and output.cache_dir is set), write this step's intermediates
+  # (frame_means — raw per-frame mean; global_mean_trend — smoothed version;
+  # video_detrended — the video after subtracting frame_means) to
+  # intermediates.h5 for inspection with the viewer.
+  cache: True
+
+  # Raw frames are uint16 Digital Numbers. Subtracting an offset and dividing by a scale
+  # brings values into a smaller range for the smoothers below — this is purely
+  # cosmetic and is inverted (* common_scale + common_offset) when writing the output.
+  common_offset: 15000
+  common_scale: 20
+
+  frame_mean_detrend: True    # If True, compute each frame's spatial mean (H, W) -> scalar, giving a
+                               # length-T signal of how the whole frame's brightness varies over time.
+                               # Subtract that raw per-frame mean from the video before the wavelet
+                               # transform, so the residual fed downstream is exactly zero-mean per
+                               # frame. Separately smooth the raw mean signal (mean_smooth_chain) and
+                               # add the smoothed trend back at reconstruction — replacing the noisy
+                               # raw per-frame brightness level with a denoised one.
+  mean_smooth_chain:          # 1D smoother chain (see "Smoother chains" note below); only 'median',
+                               # 'gaussian', and 'spline1d' make sense on a 1D signal.
+    - {spline1d: {min_sigma_hat: 0.1}}
+
+# ---------------------------------------------------------------------------
+# temporal_transform — forward/inverse DTCWT decomposition along the time axis.
+# ---------------------------------------------------------------------------
+temporal_transform:
+  # If True (and output.cache_dir is set), write this step's intermediates to
+  # intermediates.h5 for inspection with the viewer: video_coeffs_approx (raw,
+  # pre-smoothing lowpass band) and one video_coeffs_detail_lvl{N} per DTCWT
+  # decomposition level (N runs from num_levels down to 1), kept separate rather
+  # than concatenated into one blob so each level is independently inspectable.
+  cache: True
+
+  level1_filter: 'near_sym_a'   # Biorthogonal filter pair used at decomposition level 1.
+                                 # Options: near_sym_a, near_sym_b, near_sym_b_bp, antonini, legall.
+  level2p_filter: 'qshift_a'    # Q-shift filter pair used at decomposition levels 2 and deeper —
+                                 # these give the DTCWT its near shift-invariance.
+                                 # Options: qshift_a, qshift_b, qshift_c, qshift_d, qshift_06, qshift_32.
+  num_levels: -1      # Number of decomposition levels. -1 = use the maximum level supported by the
+                       # DTCWT filter length and clip length T. If set explicitly, T must be a
+                       # multiple of 2**num_levels (run_tsvp.py exits with an error if not).
+
+# ---------------------------------------------------------------------------
+# spatial_processing — denoises the wavelet coefficients frame-by-frame (each
+# coefficient index is treated as one 2D spatial image and smoothed independently).
+# ---------------------------------------------------------------------------
+spatial_processing:
+
+  # The approximation (lowpass) band: one coefficient "frame" per temporal scale step.
+  approx:
+    # If True (and output.cache_dir is set), write this step's intermediates to
+    # intermediates.h5 for inspection with the viewer: video_approx_smoothed
+    # (final result), plus — only when twopass is True — the pass-1 output
+    # (video_approx_pass1), its per-pixel residual (video_approx_pass1_noise),
+    # the per-pixel mean of that residual (video_approx_mean_noise), and the
+    # noise-subtracted signal fed into pass 2 (video_approx_noise_subtracted).
+    cache: True
+
+    twopass: True   # If True, pass 1 gives a first-cut estimate; the average per-pixel residual
+                     # between the input and that estimate is subtracted (a cheap DC noise-bias
+                     # correction) before pass 2 does the final smoothing. If False, pass1_smooth_chain
+                     # alone produces the result and pass2_smooth_chain is ignored.
+    pass1_smooth_chain:
+      - {axis_destripe: {method: 'wavelet', epsilon: 1.0, noise_sigma_multiplier: 2.0, wavelet: 'bior3.3', level: 6, mode: 'symmetric', median_size: 3, median_variance_threshold: 0.0}}
+      - {bm3d: {noise_sigma_multiplier: 1.0}}
+    pass2_smooth_chain:   # Only used when twopass is True.
+      - {axis_destripe: {method: 'wavelet', epsilon: 1.0, noise_sigma_multiplier: 2.0, wavelet: 'bior3.3', level: 6, mode: 'symmetric', median_size: 3, median_variance_threshold: 0.0}}
+      - {bm3d: {noise_sigma_multiplier: 1.5}}
+
+  # The detail (highpass) bands: many coefficient "frames" across all decomposition levels.
+  # Each level is smoothed (and cached) separately — same smooth_chain/energy_threshold/
+  # magnitude_soft_threshold applied to every level, but kept apart rather than
+  # concatenated into one blob so each level's contribution is independently inspectable.
+  detail:
+    # If True (and output.cache_dir is set), write this step's intermediates to
+    # intermediates.h5 for inspection with the viewer: one video_detail_smoothed_lvl{N}
+    # per level (right after smooth_chain, before magnitude_soft_threshold) and one
+    # video_detail_smoothed_thresholded_lvl{N} per level (the final result, after
+    # thresholding — identical to the _smoothed_lvl{N} array if magnitude_soft_threshold
+    # is null). N runs from num_levels down to 1.
+    cache: True
+
+    energy_threshold: 0.7   # Detail coefficients are complex; a frame is left unsmoothed and zeroed
+                              # out entirely only if its downsampled real part AND its downsampled
+                              # imaginary part both never exceed this value (kept if either alone clears
+                              # it, since real/imag can carry independent signal). null disables this
+                              # skip — every coefficient frame is smoothed.
+    smooth_chain:
+      - {axis_destripe: {method: 'wavelet', epsilon: 1.0, noise_sigma_multiplier: 2.0, wavelet: 'bior3.3', level: 6, mode: 'symmetric', median_size: 3, median_variance_threshold: 0.0}}
+      - {bm3d: {noise_sigma_multiplier: 1.5}}
+
+    # Applied right after smooth_chain, as the last step of detail processing (before
+    # reconstruction): shrinks every detail coefficient's magnitude by this amount
+    # (magnitude - threshold, floored at 0), preserving phase.
+    # Set to null to skip thresholding entirely.
+    magnitude_soft_threshold: 0.3
+
+# ---------------------------------------------------------------------------
+# output — where results (and optionally intermediates) get written.
+# ---------------------------------------------------------------------------
+output:
+  # file_path is intentionally omitted here — every scene writes to a different
+  # location, so this is the other field a scene config is expected to override.
+  cache_dir: ''   # Optional — '' (the default) skips writing intermediates entirely. If set,
+                   # intermediates.h5 is opened right after loading and each step writes into it
+                   # as it runs, gated by that step's own `cache: true/false` flag (see
+                   # pre_transform.cache, temporal_transform.cache, spatial_processing.approx.cache,
+                   # spatial_processing.detail.cache above) — only steps with cache: true actually
+                   # write anything, so you can inspect just the stages you care about with the
+                   # viewer (`python -m viz.app_only_viz`). The raw input video is always written
+                   # separately to input_video.h5 next to the pipeline output, regardless of this
+                   # setting.
+
+# ---------------------------------------------------------------------------
+# Smoother chains (mean_smooth_chain, pass1/pass2_smooth_chain, smooth_chain above)
+# ---------------------------------------------------------------------------
+# Each chain is a YAML list of single-key mappings: `{stage_name: {param: value, ...}}`. Stages run
+# in order, each one's output feeding the next. Available stages (src/smoother.py SMOOTHER_REGISTRY):
+#   median, gaussian, spline1d, spline2d, nlm, bm3d,
+#   axis_destripe, swt_axis_destripe, axis_nlm_destripe, axis_nlm_destripe_complex
+# `axis_destripe` and `bm3d` are the two used above: `axis_destripe` removes row/column striping
+# artifacts, `bm3d` does general-purpose spatial denoising (CPU, via the `bm3d` pip package).

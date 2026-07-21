@@ -1,0 +1,29 @@
+# Example per-scene config. Inherits everything from default_config.yaml and
+# only overrides what's actually specific to this scene: its name, its input
+# capture, and where its output goes. See configs/default_config.yaml for the
+# full set of fields available to override (and what each one does).
+extends: default_config.yaml
+
+scene_name: example_scene
+
+input:
+  # Relative to data/ — see the README's "Data and output locations" section
+  # (symlink data/ to wherever your raw captures actually live).
+  file_path: 'data/example_scene/example_scene.npz'
+
+output:
+  # Relative to output/ — same convention, for wherever you want cache/results to land.
+  file_path: 'output/example_scene/denoised_video.h5'
+
+# To tune the algorithm for just this scene, override any nested field from
+# default_config.yaml here — only the keys you set are replaced, everything
+# else is inherited unchanged. For example, to disable mean detrending and
+# use a gentler detail smoothing chain for a low-noise scene:
+#
+# pre_transform:
+#   frame_mean_detrend: False
+#
+# spatial_processing:
+#   detail:
+#     smooth_chain:
+#       - {median: {size: 3}}

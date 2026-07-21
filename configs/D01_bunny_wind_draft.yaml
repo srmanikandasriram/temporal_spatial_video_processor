@@ -1,0 +1,14 @@
+extends: default_config.yaml
+
+scene_name: D01_bunny_wind_draft
+
+input:
+  file_path: './data/D01_bunny_wind_draft/D01_bunny_wind_draft.npz.zst'
+  end_idx: 1152
+
+output:
+  file_path: './output/D01_bunny_wind_draft/denoised_video.h5'
+  cache_dir: './output/D01_bunny_wind_draft/cache'
+
+temporal_transform:
+  num_levels: 6
