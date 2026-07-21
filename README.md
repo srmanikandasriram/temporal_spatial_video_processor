@@ -1,7 +1,11 @@
-# temporal_spatial_video_processor
+# Temporal Spatial Video Processor
 
-Code release accompanying our T-PAMI paper on temporal-spatial denoising of thermal
-video. This repo contains two standalone tools:
+Code release accompanying the ICCP 2026 paper **"Revealing Subtle Heat Flows All Around
+Us Using Microbolometric Videos."**
+
+**[Project Page](https://revealing-subtle-heat.github.io/) · [Dataset](https://huggingface.co/datasets/mani-ramanagopal/subtle-heat-flows) · [Citation](#citation)**
+
+This repo contains two standalone tools:
 
 1. **`run_tsvp.py`** — a config-driven script that runs the denoising pipeline
    (wavelet transform → coefficient smoothing → reconstruction) on a raw thermal
@@ -11,6 +15,13 @@ video. This repo contains two standalone tools:
 
 The viewer does not run the pipeline — it just loads and displays whatever datasets
 are in the files you give it.
+
+## Dataset
+
+The raw thermal captures used in the paper are hosted on Hugging Face:
+**[mani-ramanagopal/subtle-heat-flows](https://huggingface.co/datasets/mani-ramanagopal/subtle-heat-flows)**.
+Download a capture, symlink it under `data/` (see below), and point a scene config's
+`input.file_path` at it to reproduce the paper's results with `run_tsvp.py`.
 
 ## Install
 
@@ -142,3 +153,17 @@ this repository's own code — it does not extend to third-party dependencies th
 invokes, such as the spatial denoising algorithms (e.g. BM3D) or the DTCWT temporal
 transform library, each of which carries its own license from its own upstream
 repository. See `requirements.txt` for the full dependency list.
+
+## Citation
+
+If you use this code or the accompanying dataset, please cite:
+
+```bibtex
+@inproceedings{ramanagopal2026revealingsubtleheat,
+  title     = {Revealing Subtle Heat Flows all around us using Microbolometric Videos},
+  author    = {Ramanagopal, Mani and Oharazawa, Akihiko and Narayanan, Sriram and
+               Yuan, Zeqing and Narasimhan, Srinivasa},
+  booktitle = {IEEE International Conference on Computational Photography (ICCP)},
+  year      = {2026}
+}
+```
