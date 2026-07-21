@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TSVP Viewer</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10/dist/gridstack.min.css" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <span class="app-title">TSVP Viewer</span>
+    <span id="scene-name" class="scene-badge"></span>
+    <span id="config-path" class="config-path"></span>
+    <span class="spacer"></span>
+  </header>
+
+  <!-- Pipeline step strip -->
+  <div class="step-strip" id="step-strip">
+    <!-- Step cards injected by JS -->
+  </div>
+
+  <!-- Panel toolbar -->
+  <div class="panel-toolbar">
+    <div class="add-panel-wrapper">
+      <button id="add-panel-btn" class="btn btn-primary" disabled>+ Add Panel</button>
+      <div id="add-panel-menu" class="add-panel-menu hidden">
+        <!-- Variable items injected by JS -->
+      </div>
+    </div>
+    <div class="add-panel-wrapper">
+      <button id="compare-panel-btn" class="btn" disabled>+ Add Comparison Panel</button>
+      <div id="compare-panel-menu" class="add-panel-menu hidden">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+    <button id="clear-panels-btn" class="btn">Clear All Panels</button>
+    <button id="grid-snap-btn" class="btn" title="Show grid lines while dragging panels (panels always snap to the grid)">⊞ Show Grid</button>
+    <button id="link-scrubbers-btn" class="btn" title="Move every video panel's frame scrubber together, so all panels stay on the same frame">🔗 Link Scrubbers</button>
+  </div>
+
+  <!-- Gridstack panel area -->
+  <div class="grid-stack" id="panel-grid"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gridstack@10/dist/gridstack-all.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2/plotly.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
