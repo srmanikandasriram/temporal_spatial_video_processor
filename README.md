@@ -16,13 +16,6 @@ This repo contains two standalone tools:
 The viewer does not run the pipeline — it just loads and displays whatever datasets
 are in the files you give it.
 
-## Dataset
-
-The raw thermal captures used in the paper are hosted on Hugging Face:
-**[mani-ramanagopal/subtle-heat-flows](https://huggingface.co/datasets/mani-ramanagopal/subtle-heat-flows)**.
-Download a capture, symlink it under `data/` (see below), and point a scene config's
-`input.file_path` at it to reproduce the paper's results with `run_tsvp.py`.
-
 ## Install
 
 ```bash
@@ -38,9 +31,16 @@ does not include. `requirements.txt` installs it straight from
 the torch backend — `pip install -r requirements.txt` handles this automatically (no
 separate step needed), as long as `git` is available and the repo is reachable.
 
-**Data and output locations.** This repo has no data of its own — raw captures and
-pipeline output/cache typically live on separate (often much larger) storage. Rather
-than hardcoding absolute paths into every config, symlink them into the repo root:
+## Getting the data
+
+The raw thermal captures used in the paper are hosted on Hugging Face:
+**[mani-ramanagopal/subtle-heat-flows](https://huggingface.co/datasets/mani-ramanagopal/subtle-heat-flows)**.
+Download a capture from there (or use your own raw Boson capture — see the input
+format note below).
+
+This repo has no data of its own — raw captures and pipeline output/cache typically
+live on separate (often much larger) storage. Rather than hardcoding absolute paths
+into every config, symlink them into the repo root:
 
 ```bash
 ln -s /path/to/your/raw_captures data
@@ -51,7 +51,9 @@ ln -s /path/to/your/output_cache output
 `.gitignore`), so configs can then reference `data/...`/`output/...` as relative paths
 that resolve the same way for everyone regardless of where the underlying storage
 actually lives. Neither name is required — this is just a convention — but
-`configs/scene_example.yaml` follows it.
+`configs/scene_example.yaml` follows it, so once `data/` points at a downloaded capture
+you can set a scene config's `input.file_path` to `data/<capture>.npz` and run
+`run_tsvp.py` directly.
 
 ## Running the pipeline
 
