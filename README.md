@@ -10,11 +10,8 @@ This repo contains two standalone tools:
 1. **`run_tsvp.py`** — a config-driven script that runs the denoising pipeline
    (wavelet transform → coefficient smoothing → reconstruction) on a raw thermal
    capture and writes the result to a single `.h5` file.
-2. **`viz/`** — a read-only browser viewer for inspecting `.h5`/`.zarr` files
+2. **`viz/`** — a read-only browser viewer for inspecting `.h5` files
    (raw captures, pipeline output, or any other intermediate you point it at).
-
-The viewer does not run the pipeline — it just loads and displays whatever datasets
-are in the files you give it.
 
 ## Install
 
@@ -35,30 +32,19 @@ separate step needed), as long as `git` is available and the repo is reachable.
 
 The raw thermal captures used in the paper are hosted on Hugging Face:
 **[mani-ramanagopal/subtle-heat-flows](https://huggingface.co/datasets/mani-ramanagopal/subtle-heat-flows)**.
-Download a capture from there (or use your own raw Boson capture — see the input
-format note below).
+Download a capture from there (or use your own raw Boson capture using [srmanikandasriram/thermal-camera-driver](https://github.com/srmanikandasriram/thermal_camera_driver)).
 
-This repo has no data of its own — raw captures and pipeline output/cache typically
-live on separate (often much larger) storage. Rather than hardcoding absolute paths
-into every config, symlink them into the repo root:
+Rather than hardcoding absolute paths into every config, symlink them into the repo root:
 
 ```bash
 ln -s /path/to/your/raw_captures data
 ln -s /path/to/your/output_cache output
 ```
 
-`data/` and `output/` are gitignored (including when they're symlinks — see
-`.gitignore`), so configs can then reference `data/...`/`output/...` as relative paths
-that resolve the same way for everyone regardless of where the underlying storage
-actually lives. Neither name is required — this is just a convention — but
-`configs/scene_example.yaml` follows it, so once `data/` points at a downloaded capture
-you can set a scene config's `input.file_path` to `data/<capture>.npz` and run
-`run_tsvp.py` directly.
-
 ## Running the pipeline
 
 ```bash
-python run_tsvp.py configs/scene_example.yaml
+python run_tsvp.py configs/D01_bunny_wind_draft.yaml
 ```
 
 `configs/default_config.yaml` holds every field that's typically shared across
@@ -119,7 +105,7 @@ your clip length evenly).
 ## Viewing results
 
 ```bash
-python -m viz.viewer configs/scene_example.yaml
+python -m viz.viewer configs/D01_bunny_wind_draft.yaml
 ```
 
 Pass the **same config file** you ran `run_tsvp.py` with. The viewer derives which
