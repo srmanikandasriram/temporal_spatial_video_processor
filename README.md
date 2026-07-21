@@ -41,6 +41,24 @@ ln -s /path/to/your/raw_captures data
 ln -s /path/to/your/output_cache output
 ```
 
+## Using your own thermal camera data
+
+TSVP's denoising assumes the input is raw microbolometer data captured at the
+sensor's native frame rate, with any on-board spatio-temporal filtering disabled.
+Cameras commonly apply frame averaging, temporal IIR/NUC filtering, or spatial
+smoothing on-board to clean up the image for human viewing — but these distort the
+intensity statistics.
+
+Cheaper, low-fps sensors like the FLIR Lepton bake this kind of internal signal
+processing into the video stream itself, with no way to disable it. TSVP can still
+be run on such footage, but the output will retain whatever burn-in, ghosting, or
+axis-aligned banding artifacts the camera's internal algorithms introduced — these
+are baked into the raw values and are not something TSVP can undo.
+
+Applying TSVP to sub-sampled thermal videos at lower fps will silently suffer from
+temporal aliasing artifacts. It is akin to applying spatial sub-sampling during
+image resizing without using an anti_aliasing filter. 
+
 ## Running the pipeline
 
 ```bash
