@@ -65,6 +65,29 @@ def _group_for_name(name: str):
     return ('other', 'Other')
 
 
+def _open_h5_readonly(path):
+    """Open an .h5 file for reading, tolerant of run_tsvp.py actively writing it.
+
+    run_tsvp.py (_cache_write) opens/writes/closes its cache file per dataset rather
+    than holding one handle for the whole run, so any lock contention window is brief.
+    locking=False skips the reader's own flock() call so it never contends for the
+    writer's lock in the first place (no SWMR is set up on the writer side, so this
+    is a best-effort read — a read landing mid-write can still hit a transient error,
+    which the retry loop below absorbs).
+    """
+    import time
+    import h5py
+
+    last_err = None
+    for attempt in range(10):
+        try:
+            return h5py.File(str(path), 'r', locking=False)
+        except OSError as e:
+            last_err = e
+            time.sleep(0.2 * (attempt + 1))
+    raise last_err
+
+
 def create_viz_app(config_path: str):
     """Build the viewer app from a pipeline config, loading whichever of
     input_video.h5 / output.file_path / intermediates.h5 currently exist.
@@ -72,7 +95,6 @@ def create_viz_app(config_path: str):
     Raises FileNotFoundError if none of them exist yet (i.e. the pipeline
     hasn't been run against this config at all).
     """
-    import h5py
     from src.config import load_config
     from viz.routes import _build_app
     from viz.h5store import H5ArrayProxy
@@ -94,7 +116,7 @@ def create_viz_app(config_path: str):
     for path in candidates:
         if not path.exists():
             continue
-        handle = h5py.File(str(path), 'r')
+        handle = _open_h5_readonly(path)
         handles.append(handle)
         for key in handle.keys():
             name = key if key not in intermediates else f"{path.stem}__{key}"
@@ -131,7 +153,6 @@ def create_viz_app_from_files(h5_paths):
     instead of the viewer's usual (H, W, T). Those are wrapped in
     THWArrayProxy so they present as (H, W, T, 1) like every other dataset.
     """
-    import h5py
     from viz.routes import _build_app
     from viz.h5store import H5ArrayProxy, THWArrayProxy
     from viz.state import PipelineState
@@ -144,7 +165,7 @@ def create_viz_app_from_files(h5_paths):
         is_thw.append(thw)
 
     # Keep file handles open for the server's lifetime so the proxy reads work.
-    handles = [h5py.File(p, 'r') for p in clean_paths]
+    handles = [_open_h5_readonly(p) for p in clean_paths]
 
     intermediates: dict = {}
     groups: dict = {}

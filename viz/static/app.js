@@ -289,7 +289,7 @@ function addPanel(varInfo) {
     isComplex: varInfo.is_complex || false,
     currentFrame: 0,
     isPlaying: false, playTimer: null, fetchInFlight: false,
-    settings: { cmap: 'gray', pmin: 1, pmax: 99, component: 'magnitude', clahe: true, histeq: false, refFrame: 'none', subtractRowColMean: false, derivative: 'none', derivSigmaS: 1.0, derivSigmaT: 1.0 },
+    settings: { cmap: 'gray', pmin: 1, pmax: 99, component: 'magnitude', clahe: true, histeq: false, pe: false, refFrame: 'none', subtractRowColMean: false, derivative: 'none', derivSigmaS: 1.0, derivSigmaT: 1.0 },
     flipH: false,
     stale: false,
     plotHandle: null,
@@ -338,7 +338,7 @@ function addComparisonPanel(varInfo1, varInfo2) {
     isComplex: varInfo1.is_complex || false,
     isComplex2: varInfo2.is_complex || false,
     currentFrame: 0, isPlaying: false, playTimer: null, fetchInFlight: false,
-    settings: { cmap: 'gray', pmin: 1, pmax: 99, component: 'magnitude', clahe: true, histeq: false, refFrame: 'none', subtractRowColMean: false, sharedRange: false, derivative: 'none', derivSigmaS: 1.0, derivSigmaT: 1.0 },
+    settings: { cmap: 'gray', pmin: 1, pmax: 99, component: 'magnitude', clahe: true, histeq: false, pe: false, refFrame: 'none', subtractRowColMean: false, sharedRange: false, derivative: 'none', derivSigmaS: 1.0, derivSigmaT: 1.0 },
     flipH: false,
     stale: false, plotHandle: null,
     offscreenCanvas: null, offscreenCanvas2: null,
@@ -616,13 +616,16 @@ function buildComparisonSkeleton(panelId, v1, v2) {
         <label class="ctrl-label" style="display:flex;align-items:center;gap:3px;cursor:pointer">
           <input type="checkbox" id="panel-histeq-${panelId}" onchange="onCtrlChange('${panelId}')"> HE
         </label>
+        <label class="ctrl-label" style="display:flex;align-items:center;gap:3px;cursor:pointer">
+          <input type="checkbox" id="panel-pe-${panelId}" onchange="onCtrlChange('${panelId}')"> PE
+        </label>
         ${(rt === 'video') ? `${!isComplex ? `<label class="ctrl-label" style="display:flex;align-items:center;gap:3px;cursor:pointer">
           <input type="checkbox" id="panel-subdiff0-${panelId}" onchange="onRefFrameChange('${panelId}','first')"> −f₀
         </label>
         <label class="ctrl-label" style="display:flex;align-items:center;gap:3px;cursor:pointer">
           <input type="checkbox" id="panel-subdiffm-${panelId}" onchange="onRefFrameChange('${panelId}','mid')"> −f½
-        </label>` : ''}
-        <label class="ctrl-label" style="display:flex;align-items:center;gap:3px;cursor:pointer">
+        </label>` : ''}` : ''}
+        ${(rt === 'video' || rt === 'heatmap' || rt === 'image') ? `<label class="ctrl-label" style="display:flex;align-items:center;gap:3px;cursor:pointer">
           <input type="checkbox" id="panel-submean-${panelId}" onchange="onCtrlChange('${panelId}')"> −μᵣc
         </label>` : ''}
         <label class="ctrl-label" style="display:flex;align-items:center;gap:3px;cursor:pointer">
@@ -764,13 +767,16 @@ function buildPanelSkeleton(panelId, varInfo) {
         <label class="ctrl-label" style="display:flex;align-items:center;gap:3px;cursor:pointer">
           <input type="checkbox" id="panel-histeq-${panelId}" onchange="onCtrlChange('${panelId}')"> HE
         </label>
+        <label class="ctrl-label" style="display:flex;align-items:center;gap:3px;cursor:pointer">
+          <input type="checkbox" id="panel-pe-${panelId}" onchange="onCtrlChange('${panelId}')"> PE
+        </label>
         ${(render_type === 'video') ? `${!is_complex ? `<label class="ctrl-label" style="display:flex;align-items:center;gap:3px;cursor:pointer">
           <input type="checkbox" id="panel-subdiff0-${panelId}" onchange="onRefFrameChange('${panelId}','first')"> −f₀
         </label>
         <label class="ctrl-label" style="display:flex;align-items:center;gap:3px;cursor:pointer">
           <input type="checkbox" id="panel-subdiffm-${panelId}" onchange="onRefFrameChange('${panelId}','mid')"> −f½
-        </label>` : ''}
-        <label class="ctrl-label" style="display:flex;align-items:center;gap:3px;cursor:pointer">
+        </label>` : ''}` : ''}
+        ${(render_type === 'video' || render_type === 'heatmap' || render_type === 'image') ? `<label class="ctrl-label" style="display:flex;align-items:center;gap:3px;cursor:pointer">
           <input type="checkbox" id="panel-submean-${panelId}" onchange="onCtrlChange('${panelId}')"> −μᵣc
         </label>` : ''}
       </div>
@@ -880,21 +886,25 @@ function onCtrlChange(panelId) {
   // Phase controls: force-disable CLAHE, HE, and percentile clipping
   const claheEl  = document.getElementById(`panel-clahe-${panelId}`);
   const histeqEl = document.getElementById(`panel-histeq-${panelId}`);
+  const peEl     = document.getElementById(`panel-pe-${panelId}`);
   const pminEl   = document.getElementById(`panel-pmin-${panelId}`);
   const pmaxEl   = document.getElementById(`panel-pmax-${panelId}`);
   if (isPhase) {
     if (claheEl)  { claheEl.checked  = false; claheEl.disabled  = true; }
     if (histeqEl) { histeqEl.checked = false; histeqEl.disabled = true; }
+    if (peEl)     { peEl.checked     = false; peEl.disabled     = true; }
     if (pminEl)   pminEl.disabled = true;
     if (pmaxEl)   pmaxEl.disabled = true;
   } else {
     if (claheEl)  claheEl.disabled  = false;
     if (histeqEl) histeqEl.disabled = false;
+    if (peEl)     peEl.disabled     = false;
     if (pminEl)   pminEl.disabled = false;
     if (pmaxEl)   pmaxEl.disabled = false;
   }
   p.settings.clahe   = !isPhase && (claheEl?.checked  || false);
   p.settings.histeq  = !isPhase && (histeqEl?.checked || false);
+  p.settings.pe      = !isPhase && (peEl?.checked     || false);
   p.settings.pmin    = parseFloat(pminEl?.value || 1);
   p.settings.pmax    = parseFloat(pmaxEl?.value || 99);
   const isIso = p.settings.cmap === 'isocontours';
@@ -1484,16 +1494,16 @@ async function fetchAndDrawFrame(panelId, frameIndex) {
   const p = panels.get(panelId);
   if (!p) return;
   p.fetchInFlight = true;
-  const { cmap, pmin, pmax, component, clahe, histeq = false, refFrame = 'none', subtractRowColMean = false, isocontourRange = 1, sharedRange, derivative = 'none', derivSigmaS = 1.0, derivSigmaT = 1.0 } = p.settings;
+  const { cmap, pmin, pmax, component, clahe, histeq = false, pe = false, refFrame = 'none', subtractRowColMean = false, isocontourRange = 1, sharedRange, derivative = 'none', derivSigmaS = 1.0, derivSigmaT = 1.0 } = p.settings;
   const meanSuffix = subtractRowColMean ? '&subtract_rowcol_mean=true' : '';
 
   // In comparison mode with shared contrast enhancement, use the joint endpoint
   // which computes the CDF from both frames together.
   // Skip joint endpoint when a derivative is active (not supported there).
-  if (p.isComparison && (histeq || clahe) && p.varName2 && derivative === 'none') {
+  if (p.isComparison && (histeq || pe || clahe) && p.varName2 && derivative === 'none') {
     try {
       const clampedFrame2 = Math.min(frameIndex, p.frameCount2 - 1);
-      const url = `/api/compare/frame-rgba?name1=${p.varName}&name2=${p.varName2}&frame_index=${frameIndex}&cmap=${cmap}&pmin=${pmin}&pmax=${pmax}&component=${component}&clahe=${clahe}&histeq=${histeq}&ref_frame=${refFrame}${meanSuffix}`;
+      const url = `/api/compare/frame-rgba?name1=${p.varName}&name2=${p.varName2}&frame_index=${frameIndex}&cmap=${cmap}&pmin=${pmin}&pmax=${pmax}&component=${component}&clahe=${clahe}&histeq=${histeq}&pe=${pe}&ref_frame=${refFrame}${meanSuffix}`;
       const resp = await fetch(url);
       if (!resp.ok) return;
       const w1 = parseInt(resp.headers.get('X-Frame-Width'));
@@ -1529,7 +1539,7 @@ async function fetchAndDrawFrame(panelId, frameIndex) {
     if (sv) sharedSuffix = `&vmin=${sv.vmin}&vmax=${sv.vmax}`;
   }
   const derivSuffix = derivative !== 'none' ? `&derivative=${derivative}&deriv_sigma_s=${derivSigmaS}&deriv_sigma_t=${derivSigmaT}` : '';
-  const url = `/api/variable/${p.varName}/frame-rgba?frame_index=${frameIndex}&cmap=${cmap}&pmin=${pmin}&pmax=${pmax}&component=${component}&clahe=${clahe}&histeq=${histeq}&ref_frame=${refFrame}&isocontour_range=${isocontourRange}${sharedSuffix}${derivSuffix}${meanSuffix}`;
+  const url = `/api/variable/${p.varName}/frame-rgba?frame_index=${frameIndex}&cmap=${cmap}&pmin=${pmin}&pmax=${pmax}&component=${component}&clahe=${clahe}&histeq=${histeq}&pe=${pe}&ref_frame=${refFrame}&isocontour_range=${isocontourRange}${sharedSuffix}${derivSuffix}${meanSuffix}`;
   try {
     const resp = await fetch(url);
     if (!resp.ok) return;
@@ -1560,12 +1570,13 @@ async function fetchAndDrawFrame(panelId, frameIndex) {
 async function fetchAndDrawHeatmap(panelId) {
   const p = panels.get(panelId);
   if (!p) return;
-  const { cmap, pmin, pmax, component, clahe, histeq = false, isocontourRange = 1, sharedRange } = p.settings;
+  const { cmap, pmin, pmax, component, clahe, histeq = false, pe = false, subtractRowColMean = false, isocontourRange = 1, sharedRange } = p.settings;
+  const meanSuffix = subtractRowColMean ? '&subtract_rowcol_mean=true' : '';
 
   // In comparison mode with shared contrast enhancement, use the joint endpoint.
-  if (p.isComparison && (histeq || clahe) && p.varName2) {
+  if (p.isComparison && (histeq || pe || clahe) && p.varName2) {
     try {
-      const url = `/api/compare/heatmap-rgba?name1=${p.varName}&name2=${p.varName2}&cmap=${cmap}&pmin=${pmin}&pmax=${pmax}&component=${component}&clahe=${clahe}&histeq=${histeq}`;
+      const url = `/api/compare/heatmap-rgba?name1=${p.varName}&name2=${p.varName2}&cmap=${cmap}&pmin=${pmin}&pmax=${pmax}&component=${component}&clahe=${clahe}&histeq=${histeq}&pe=${pe}${meanSuffix}`;
       const resp = await fetch(url);
       if (!resp.ok) return;
       const w1 = parseInt(resp.headers.get('X-Frame-Width'));
@@ -1595,7 +1606,7 @@ async function fetchAndDrawHeatmap(panelId) {
     const sv = await getSharedVminVmax(p, p.frameIndex ?? 0);
     if (sv) sharedSuffix = `&vmin=${sv.vmin}&vmax=${sv.vmax}`;
   }
-  const url = `/api/variable/${p.varName}/heatmap-rgba?cmap=${cmap}&pmin=${pmin}&pmax=${pmax}&component=${component}&clahe=${clahe}&histeq=${histeq}&isocontour_range=${isocontourRange}${sharedSuffix}`;
+  const url = `/api/variable/${p.varName}/heatmap-rgba?cmap=${cmap}&pmin=${pmin}&pmax=${pmax}&component=${component}&clahe=${clahe}&histeq=${histeq}&pe=${pe}&isocontour_range=${isocontourRange}${sharedSuffix}${meanSuffix}`;
   try {
     const resp = await fetch(url);
     if (!resp.ok) return;
@@ -2057,8 +2068,8 @@ async function fetchAndDrawFrame2(panelId, frameIndex) {
   const p = panels.get(panelId);
   if (!p?.varName2) return;
   // Joint endpoint already rendered both canvases; nothing left to do.
-  if (p.isComparison && (p.settings.histeq || p.settings.clahe) && (p.settings.derivative || 'none') === 'none') return;
-  const { cmap, pmin, pmax, component, clahe, histeq = false, refFrame = 'none', subtractRowColMean = false, isocontourRange = 1, sharedRange, derivative = 'none', derivSigmaS = 1.0, derivSigmaT = 1.0 } = p.settings;
+  if (p.isComparison && (p.settings.histeq || p.settings.pe || p.settings.clahe) && (p.settings.derivative || 'none') === 'none') return;
+  const { cmap, pmin, pmax, component, clahe, histeq = false, pe = false, refFrame = 'none', subtractRowColMean = false, isocontourRange = 1, sharedRange, derivative = 'none', derivSigmaS = 1.0, derivSigmaT = 1.0 } = p.settings;
   const clampedFrame = Math.min(frameIndex, p.frameCount2 - 1);
   let sharedSuffix = component === 'phase' ? `&vmin=${-PI}&vmax=${PI}` : '';
   if (!sharedSuffix && sharedRange) {
@@ -2067,7 +2078,7 @@ async function fetchAndDrawFrame2(panelId, frameIndex) {
   }
   const derivSuffix = derivative !== 'none' ? `&derivative=${derivative}&deriv_sigma_s=${derivSigmaS}&deriv_sigma_t=${derivSigmaT}` : '';
   const meanSuffix2 = subtractRowColMean ? '&subtract_rowcol_mean=true' : '';
-  const url = `/api/variable/${p.varName2}/frame-rgba?frame_index=${clampedFrame}&cmap=${cmap}&pmin=${pmin}&pmax=${pmax}&component=${component}&clahe=${clahe}&histeq=${histeq}&ref_frame=${refFrame}&isocontour_range=${isocontourRange}${sharedSuffix}${derivSuffix}${meanSuffix2}`;
+  const url = `/api/variable/${p.varName2}/frame-rgba?frame_index=${clampedFrame}&cmap=${cmap}&pmin=${pmin}&pmax=${pmax}&component=${component}&clahe=${clahe}&histeq=${histeq}&pe=${pe}&ref_frame=${refFrame}&isocontour_range=${isocontourRange}${sharedSuffix}${derivSuffix}${meanSuffix2}`;
   try {
     const resp = await fetch(url);
     if (!resp.ok) return;
@@ -2089,14 +2100,15 @@ async function fetchAndDrawHeatmap2(panelId) {
   const p = panels.get(panelId);
   if (!p?.varName2) return;
   // Joint endpoint already rendered both canvases; nothing left to do.
-  if (p.isComparison && (p.settings.histeq || p.settings.clahe)) return;
-  const { cmap, pmin, pmax, component, clahe, histeq = false, isocontourRange = 1, sharedRange } = p.settings;
+  if (p.isComparison && (p.settings.histeq || p.settings.pe || p.settings.clahe)) return;
+  const { cmap, pmin, pmax, component, clahe, histeq = false, pe = false, subtractRowColMean = false, isocontourRange = 1, sharedRange } = p.settings;
   let sharedSuffix = component === 'phase' ? `&vmin=${-PI}&vmax=${PI}` : '';
   if (!sharedSuffix && sharedRange) {
     const sv = await getSharedVminVmax(p, p.frameIndex ?? 0);
     if (sv) sharedSuffix = `&vmin=${sv.vmin}&vmax=${sv.vmax}`;
   }
-  const url = `/api/variable/${p.varName2}/heatmap-rgba?cmap=${cmap}&pmin=${pmin}&pmax=${pmax}&component=${component}&clahe=${clahe}&histeq=${histeq}&isocontour_range=${isocontourRange}${sharedSuffix}`;
+  const meanSuffix2 = subtractRowColMean ? '&subtract_rowcol_mean=true' : '';
+  const url = `/api/variable/${p.varName2}/heatmap-rgba?cmap=${cmap}&pmin=${pmin}&pmax=${pmax}&component=${component}&clahe=${clahe}&histeq=${histeq}&pe=${pe}&isocontour_range=${isocontourRange}${sharedSuffix}${meanSuffix2}`;
   try {
     const resp = await fetch(url);
     if (!resp.ok) return;
@@ -2713,13 +2725,14 @@ async function exportPanelAsMp4(panelId) {
   if (fpsInput === null) return;
   const fps = parseFloat(fpsInput) || 15;
 
-  const { cmap, pmin, pmax, component, clahe, histeq = false, refFrame = 'none',
+  const { cmap, pmin, pmax, component, clahe, histeq = false, pe = false, refFrame = 'none',
           subtractRowColMean = false, isocontourRange = 1, derivative = 'none',
           derivSigmaS = 1.0, derivSigmaT = 1.0 } = p.settings;
   const params = new URLSearchParams({
     cmap, pmin, pmax, component,
     clahe: clahe ? 'true' : 'false',
     histeq: histeq ? 'true' : 'false',
+    pe: pe ? 'true' : 'false',
     ref_frame: refFrame,
     subtract_rowcol_mean: subtractRowColMean ? 'true' : 'false',
     isocontour_range: isocontourRange,
@@ -2798,13 +2811,15 @@ async function exportPanelAsPNG(panelId) {
   }
 
   function buildExportParams(varName2 = false) {
-    const { cmap, pmin, pmax, component, clahe, histeq = false, refFrame = 'none',
+    const { cmap, pmin, pmax, component, clahe, histeq = false, pe = false, refFrame = 'none',
             subtractRowColMean = false, isocontourRange = 1, derivative = 'none',
             derivSigmaS = 1.0, derivSigmaT = 1.0 } = p.settings;
     const params = new URLSearchParams({
       cmap, pmin, pmax, component,
       clahe: clahe ? 'true' : 'false',
       histeq: histeq ? 'true' : 'false',
+      pe: pe ? 'true' : 'false',
+    pe: pe ? 'true' : 'false',
       ref_frame: refFrame,
       subtract_rowcol_mean: subtractRowColMean ? 'true' : 'false',
       isocontour_range: isocontourRange,

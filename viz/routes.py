@@ -185,6 +185,7 @@ def _build_app(state: PipelineState) -> FastAPI:
         component: str = 'magnitude',
         clahe: bool = False,
         histeq: bool = False,
+        pe: bool = False,
         ref_frame: str = 'none',
         subtract_rowcol_mean: bool = False,
         isocontour_range: float = 1.0,
@@ -240,7 +241,7 @@ def _build_app(state: PipelineState) -> FastAPI:
                         _global_stats_cache[cache_key] = (global_vmin, global_vmax)
 
         rgba_bytes = render_frame_rgba(frame_2d, cmap=cmap, pmin=pmin, pmax=pmax, clahe=clahe,
-                                       histeq=histeq, isocontour_range=isocontour_range,
+                                       histeq=histeq, pe=pe, isocontour_range=isocontour_range,
                                        global_vmin=global_vmin, global_vmax=global_vmax)
         h, w = frame_2d.shape
         return rgba_bytes, h, w, fc, frame_index
@@ -255,6 +256,7 @@ def _build_app(state: PipelineState) -> FastAPI:
         component: str = 'magnitude',
         clahe: bool = False,
         histeq: bool = False,
+        pe: bool = False,
         subtract_first_frame: bool = False,
         ref_frame: str = 'none',
         subtract_rowcol_mean: bool = False,
@@ -271,7 +273,7 @@ def _build_app(state: PipelineState) -> FastAPI:
 
         rgba_bytes, h, w, fc, frame_index = _render_variable_frame_rgba(
             name, frame_index, cmap=cmap, pmin=pmin, pmax=pmax, component=component,
-            clahe=clahe, histeq=histeq, ref_frame=ref_frame,
+            clahe=clahe, histeq=histeq, pe=pe, ref_frame=ref_frame,
             subtract_rowcol_mean=subtract_rowcol_mean, isocontour_range=isocontour_range,
             vmin=vmin, vmax=vmax, derivative=derivative,
             deriv_sigma_s=deriv_sigma_s, deriv_sigma_t=deriv_sigma_t,
@@ -294,6 +296,7 @@ def _build_app(state: PipelineState) -> FastAPI:
         component: str = 'magnitude',
         clahe: bool = False,
         histeq: bool = False,
+        pe: bool = False,
         ref_frame: str = 'none',
         subtract_rowcol_mean: bool = False,
         isocontour_range: float = 1.0,
@@ -338,7 +341,7 @@ def _build_app(state: PipelineState) -> FastAPI:
             for i in range(start, end):
                 rgba_bytes, h, w, _, _ = _render_variable_frame_rgba(
                     name, i, cmap=cmap, pmin=pmin, pmax=pmax, component=component,
-                    clahe=clahe, histeq=histeq, ref_frame=ref_frame,
+                    clahe=clahe, histeq=histeq, pe=pe, ref_frame=ref_frame,
                     subtract_rowcol_mean=subtract_rowcol_mean, isocontour_range=isocontour_range,
                     vmin=vmin, vmax=vmax, derivative=derivative,
                     deriv_sigma_s=deriv_sigma_s, deriv_sigma_t=deriv_sigma_t,
@@ -389,6 +392,7 @@ def _build_app(state: PipelineState) -> FastAPI:
         component: str = 'magnitude',
         clahe: bool = False,
         histeq: bool = False,
+        pe: bool = False,
         ref_frame: str = 'none',
         subtract_rowcol_mean: bool = False,
         isocontour_range: float = 1.0,
@@ -420,7 +424,7 @@ def _build_app(state: PipelineState) -> FastAPI:
         if rt == 'video':
             rgba_bytes, h, w, _, _ = _render_variable_frame_rgba(
                 name, frame_index, cmap=cmap, pmin=pmin, pmax=pmax, component=component,
-                clahe=clahe, histeq=histeq, ref_frame=ref_frame,
+                clahe=clahe, histeq=histeq, pe=pe, ref_frame=ref_frame,
                 subtract_rowcol_mean=subtract_rowcol_mean, isocontour_range=isocontour_range,
                 vmin=vmin, vmax=vmax, derivative=derivative,
                 deriv_sigma_s=deriv_sigma_s, deriv_sigma_t=deriv_sigma_t,
@@ -429,7 +433,7 @@ def _build_app(state: PipelineState) -> FastAPI:
             arr_real = apply_component(arr.squeeze(), component) if is_complex_array(arr) else arr
             try:
                 rgba_bytes, w, h = render_heatmap_rgba(arr_real, cmap=cmap, pmin=pmin, pmax=pmax, clahe=clahe,
-                                                        histeq=histeq, isocontour_range=isocontour_range,
+                                                        histeq=histeq, pe=pe, isocontour_range=isocontour_range,
                                                         global_vmin=vmin, global_vmax=vmax)
             except ValueError as e:
                 raise HTTPException(422, str(e))
@@ -528,6 +532,8 @@ def _build_app(state: PipelineState) -> FastAPI:
         component: str = 'magnitude',
         clahe: bool = False,
         histeq: bool = False,
+        pe: bool = False,
+        subtract_rowcol_mean: bool = False,
         isocontour_range: float = 1.0,
         vmin: Optional[float] = None,
         vmax: Optional[float] = None,
@@ -536,12 +542,14 @@ def _build_app(state: PipelineState) -> FastAPI:
         if arr is None or not hasattr(arr, 'shape'):
             raise HTTPException(404, f"Variable '{name}' not found")
         # Apply component transform before squeezing (handles complex heatmaps)
-        arr_real = apply_component(arr.squeeze(), component) if is_complex_array(arr) else arr
+        arr_real = apply_component(arr.squeeze(), component) if is_complex_array(arr) else np.asarray(arr).squeeze()
+        if subtract_rowcol_mean:
+            arr_real = _subtract_rowcol_mean(arr_real)
         global_vmin = vmin
         global_vmax = vmax
         try:
             rgba_bytes, w, h = render_heatmap_rgba(arr_real, cmap=cmap, pmin=pmin, pmax=pmax, clahe=clahe,
-                                                    histeq=histeq, isocontour_range=isocontour_range,
+                                                    histeq=histeq, pe=pe, isocontour_range=isocontour_range,
                                                     global_vmin=global_vmin, global_vmax=global_vmax)
         except ValueError as e:
             raise HTTPException(422, str(e))
@@ -560,6 +568,7 @@ def _build_app(state: PipelineState) -> FastAPI:
         component: str = 'magnitude',
         clahe: bool = False,
         histeq: bool = False,
+        pe: bool = False,
         ref_frame: str = 'none',
         subtract_rowcol_mean: bool = False,
         isocontour_range: float = 1.0,
@@ -588,7 +597,7 @@ def _build_app(state: PipelineState) -> FastAPI:
         if subtract_rowcol_mean:
             frame2 = _subtract_rowcol_mean(frame2)
         rgba1, rgba2 = render_compare_rgba(frame1, frame2, cmap=cmap, pmin=pmin, pmax=pmax,
-                                           clahe=clahe, histeq=histeq,
+                                           clahe=clahe, histeq=histeq, pe=pe,
                                            isocontour_range=isocontour_range)
         h1, w1 = frame1.shape
         h2, w2 = frame2.shape
@@ -610,6 +619,8 @@ def _build_app(state: PipelineState) -> FastAPI:
         component: str = 'magnitude',
         clahe: bool = False,
         histeq: bool = False,
+        pe: bool = False,
+        subtract_rowcol_mean: bool = False,
         isocontour_range: float = 1.0,
     ):
         """Render two heatmaps with shared contrast enhancement."""
@@ -623,8 +634,11 @@ def _build_app(state: PipelineState) -> FastAPI:
         f2 = apply_component(arr2.squeeze(), component) if is_complex_array(arr2) else arr2.squeeze().astype(np.float32)
         if f1.ndim != 2 or f2.ndim != 2:
             raise HTTPException(422, "Arrays must be 2D after squeezing")
+        if subtract_rowcol_mean:
+            f1 = _subtract_rowcol_mean(f1)
+            f2 = _subtract_rowcol_mean(f2)
         rgba1, rgba2 = render_compare_rgba(f1, f2, cmap=cmap, pmin=pmin, pmax=pmax,
-                                           clahe=clahe, histeq=histeq,
+                                           clahe=clahe, histeq=histeq, pe=pe,
                                            isocontour_range=isocontour_range)
         h1, w1 = f1.shape
         h2, w2 = f2.shape

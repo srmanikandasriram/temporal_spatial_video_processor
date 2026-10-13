@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Optional, Tuple
 import numpy as np
-import matplotlib.cm as cm
+import matplotlib as mpl
 from skimage.exposure import equalize_adapthist, equalize_hist
 
 
@@ -56,6 +56,49 @@ def _apply_joint_histeq(a: np.ndarray, b: np.ndarray) -> Tuple[np.ndarray, np.nd
     return out_a, out_b
 
 
+# PE constants tuned against FLIR's 8-bit output (i376_mixed_1.npz, raw_thr_frames_0 vs _1) by
+# matching output-intensity quantiles. Best fit used input clipped at ~0.1/99.5 percentiles
+# (set pmin/pmax accordingly); FLIR's result is much flatter than classic HE.
+PE_BINS = 1024
+PE_PLATEAU_FRAC = 0.0008  # plateau = 0.08% of pixels per bin
+PE_LINEAR_MIX = 0.15      # fraction of a linear ramp mixed into the CDF
+
+
+def _plateau_lut(combined: np.ndarray) -> np.ndarray:
+    """Build a plateau-equalization LUT (PE_BINS entries, values in [0, 1]).
+
+    FLIR-style plateau equalization: histogram the data, clip every bin count to
+    a plateau value (so large uniform regions such as sky/background cannot
+    dominate the dynamic range), then use the normalized cumulative sum of the
+    clipped histogram as the tone curve. A small linear component is blended in
+    so sparse histograms still map smoothly.
+    """
+    hist, _ = np.histogram(combined, bins=PE_BINS, range=(0.0, 1.0))
+    plateau = max(1.0, PE_PLATEAU_FRAC * combined.size)
+    clipped = np.minimum(hist.astype(np.float64), plateau)
+    cdf = np.cumsum(clipped)
+    if cdf[-1] <= 0:
+        return np.linspace(0.0, 1.0, PE_BINS)
+    cdf = (cdf - cdf[0]) / max(cdf[-1] - cdf[0], 1e-12)
+    return (1.0 - PE_LINEAR_MIX) * cdf + PE_LINEAR_MIX * np.linspace(0.0, 1.0, PE_BINS)
+
+
+def _apply_lut(x: np.ndarray, lut: np.ndarray) -> np.ndarray:
+    pos = np.linspace(0.0, 1.0, lut.size)
+    return np.interp(x.ravel(), pos, lut).reshape(x.shape).astype(np.float32)
+
+
+def _apply_plateau_eq(normalized: np.ndarray) -> np.ndarray:
+    """Plateau equalization of a [0, 1] float32 2D image. Returns [0, 1] float32."""
+    return _apply_lut(normalized, _plateau_lut(normalized.ravel()))
+
+
+def _apply_joint_plateau_eq(a: np.ndarray, b: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """Plateau equalization with one tone curve built from both images' pooled pixels."""
+    lut = _plateau_lut(np.concatenate([a.ravel(), b.ravel()]))
+    return _apply_lut(a, lut), _apply_lut(b, lut)
+
+
 def _normalize_frame(
     frame: np.ndarray,
     pmin: float,
@@ -74,7 +117,7 @@ def _normalize_frame(
 
 
 def _colormap_bytes(normalized: np.ndarray, cmap: str) -> bytes:
-    return (cm.get_cmap(cmap)(normalized) * 255).astype(np.uint8).tobytes()
+    return (mpl.colormaps[cmap](normalized) * 255).astype(np.uint8).tobytes()
 
 
 def render_frame_rgba(
@@ -84,6 +127,7 @@ def render_frame_rgba(
     pmax: float = 99.0,
     clahe: bool = False,
     histeq: bool = False,
+    pe: bool = False,
     isocontour_range: float = 1.0,
     global_vmin: Optional[float] = None,
     global_vmax: Optional[float] = None,
@@ -100,13 +144,15 @@ def render_frame_rgba(
                 span = 1e-8
             f = (f - global_vmin) / span
         modded = (f % rng) / rng
-        rgba = (cm.get_cmap('turbo')(modded) * 255).astype(np.uint8)
+        rgba = (mpl.colormaps['turbo'](modded) * 255).astype(np.uint8)
         return rgba.tobytes()
     normalized = _normalize_frame(frame, pmin, pmax, global_vmin, global_vmax)
     if clahe:
         normalized = _apply_clahe(normalized)
     elif histeq:
         normalized = _apply_histeq(normalized)
+    elif pe:
+        normalized = _apply_plateau_eq(normalized)
     return _colormap_bytes(normalized, cmap)
 
 
@@ -118,6 +164,7 @@ def render_compare_rgba(
     pmax: float = 99.0,
     clahe: bool = False,
     histeq: bool = False,
+    pe: bool = False,
     isocontour_range: float = 1.0,
 ) -> Tuple[bytes, bytes]:
     """Render two frames with shared contrast enhancement.
@@ -149,6 +196,8 @@ def render_compare_rgba(
     norm2 = _normalize_frame(frame2, pmin, pmax, None, None)
     if histeq:
         norm1, norm2 = _apply_joint_histeq(norm1, norm2)
+    elif pe:
+        norm1, norm2 = _apply_joint_plateau_eq(norm1, norm2)
     elif clahe:
         norm1 = _apply_clahe(norm1)
         norm2 = _apply_clahe(norm2)
@@ -162,6 +211,7 @@ def render_heatmap_rgba(
     pmax: float = 99.0,
     clahe: bool = False,
     histeq: bool = False,
+    pe: bool = False,
     isocontour_range: float = 1.0,
     global_vmin: Optional[float] = None,
     global_vmax: Optional[float] = None,
@@ -178,7 +228,7 @@ def render_heatmap_rgba(
         raise ValueError(f"Cannot render array of shape {arr.shape} as 2D heatmap")
     height, width = squeezed.shape
     rgba_bytes = render_frame_rgba(squeezed, cmap=cmap, pmin=pmin, pmax=pmax, clahe=clahe,
-                                   histeq=histeq, isocontour_range=isocontour_range,
+                                   histeq=histeq, pe=pe, isocontour_range=isocontour_range,
                                    global_vmin=global_vmin, global_vmax=global_vmax)
     return rgba_bytes, width, height
 
